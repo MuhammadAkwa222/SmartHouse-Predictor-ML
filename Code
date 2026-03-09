@@ -1,0 +1,117 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+
+# Ensures plots render inside the notebook
+%matplotlib inline
+sns.set_theme(style="whitegrid")
+
+import pandas as pd
+
+# This is a public URL for the same USA_Housing dataset
+url = "https://raw.githubusercontent.com/ageron/handson-ml2/master/datasets/housing/housing.csv"
+
+# Or if you have the specific Kaggle CSV link hosted elsewhere:
+# url = "YOUR_LINK_HERE"
+
+df = pd.read_csv(url)
+print("Data loaded directly from the web!")
+df.head()
+
+# Step 1: Data Cleaning & Feature Engineering
+# Real-world data is never perfect. The dataset has some missing values in total_bedrooms, and the "raw" numbers (like total rooms) are often less useful than "ratios" (like rooms per house).
+# Create copies to keep the original data safe
+housing=df.copy()
+
+# 1. Handling Missing Values (Imputation)
+# 'total_bedrooms' has about 207 missing rows. We fill them with the median.
+housing['total_bedrooms']=housing['total_bedrooms'].fillna(housing['total_bedrooms'].median())
+
+# 2. Feature Engineering (Creating more meaningful columns)
+# A house with 10 rooms is different if 1 person lives there vs 10 people.
+housing['rooms_per_household']=housing['total_rooms']/housing['households']
+housing['bedrooms_per_room']=housing['total_bedrooms']/housing['total_rooms']
+housing['population_per_household']=housing['population']/housing['households']
+print("New features created. Missing values handled")
+housing.head(3)
+
+# Step 2: The Training Pipeline
+# We will use a Gradient Boosting Regressor. This is a powerful "Ensemble" model that builds multiple trees to correct the errors of previous ones. We use a Pipeline to ensure our scaling and encoding happen automatically during testing.
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.ensemble import GradientBoostingRegressor
+
+# Separate Features (X) and Target (y)
+X=housing.drop("median_house_value", axis=1)
+y=housing['median_house_value']
+
+# Identify column types
+num_attribs=list(X.drop("ocean_proximity", axis=1))
+cat_attribs=["ocean_proximity"]
+
+# Build the Preprocessing Engine
+full_pipeline = ColumnTransformer([
+    ("num", StandardScaler(), num_attribs),
+    ("cat", OneHotEncoder(), cat_attribs)
+])
+
+# Create the Final Model Pipeline
+model_pipeline=Pipeline([
+    ("preparation", full_pipeline),
+    ("gbr", GradientBoostingRegressor(n_estimators=100, learning_rate=0.1, max_depth=4, random_state=42))
+
+])
+    
+
+# Split the data (80% Training, 20% Testing)
+X_train, X_test, y_train, y_test=train_test_split(X, y, test_size=0.2, random_state=42)
+
+# TRAIN THE MODEL
+model_pipeline.fit(X_train, y_train)
+print("Model training is complete!")
+     
+# Step 3: Performance Evaluation (MAE & RMSE)
+# Now we see how much the model's predictions differ from the actual census prices.
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+
+# Make Predictions
+predictions=model_pipeline.predict(X_test)
+
+# Calculate Errors
+mae=mean_absolute_error(y_test, predictions)
+rmse=np.sqrt(mean_squared_error(y_test, predictions))
+
+print(f"--- Model Results ---")
+print(f"Mean Absolute Error (MAE): ${mae:,.2f}")
+print(f"Root Mean Squared Error (RMSE): ${rmse:,.2f}")
+
+# Context check: What is the average house price?
+avg_price=y.mean()
+error_percentage=(mae/avg_price)*100
+print(f"Average Error: {error_percentage:.2f}% of the mean house value.")
+
+# Step 4: Final Visualization
+# In a Jupyter Notebook, a scatter plot with a "Perfect Prediction" line (the red dashed line) is the best way to see where your model struggles (e.g., very expensive houses).
+plt.figure(figsize=(10,7))
+sns.scatterplot(x=y_test, y=predictions, alpha=0.4, color='teal')
+
+# Draw a diagonal line (Where Predicted = Actual)
+line_coords=[y_test.min(), y_test.max()]
+plt.plot(line_coords, line_coords, 'r--', lw=3, label="Perfect Prediction")
+
+plt.title("House Price Prediction: Actual vs. Predicted", fontsize=16)
+plt.xlabel("Actual Median House Value ($)", fontsize=12)
+plt.ylabel("Predicted Median House Value ($)", fontsize=12)
+plt.legend()
+plt.grid(True, linestyle='--', alpha=0.6)
+plt.show()
